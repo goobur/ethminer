@@ -159,6 +159,7 @@ if (APICORE)
 endif()
 add_subdirectory(libethcore)
 add_subdirectory(ethminer)
+add_subdirectory(ethtester)
 
 
 if(WIN32)
