@@ -190,7 +190,14 @@ int main(int argc, char** argv)
 		printf("0x%08X\n", test_node.words[i]);
 	}
 
+	uint32_t	test_header[32/4] = {
+		0xAAAAAAA0, 0x0BBBBBB0,
+		0xDEADBEEF, 0xBEEF4DAD,
+		0xBEEFBEEF, 0xACA74DAD,
+		0xDAD5CAFE, 0xDAD5B00B
+	} ;
 
+	m_queue.enqueueWriteBuffer(m_header, CL_TRUE, 0, 32, test_header);
 	m_queue.enqueueWriteBuffer(m_light, CL_TRUE, 0, light->data().size(), light->data().data());
 	
 
@@ -295,12 +302,17 @@ int main(int argc, char** argv)
 		 	m_asmKernel.setArg(1, m_header);
 		 	m_asmKernel.setArg(2, m_dag);
 
-			cl_ulong target = 0; 
-			cl_ulong nonce = 0x1337;
-			cl_uint isolate = 0;
+			cl_ulong target = 0x80000000090000L; 
+			cl_ulong nonce = 0x133700001338000L;
+			cl_uint isolate = 666;
+			cl_uint factor  = (1UL << 32)/dagSize128;
 		 	m_asmKernel.setArg(3, nonce);
 		 	m_asmKernel.setArg(4, target);
 		 	m_asmKernel.setArg(5, isolate);
+		 	m_asmKernel.setArg(6, dagSize128);
+		 	m_asmKernel.setArg(7, factor);
+
+
 
 		}catch (cl::Error const&) {
 			printf("Failed to load and set args for kernel...\n");
