@@ -28,6 +28,7 @@
 #include "CL/cl2.hpp"
 #include <libethash/internal.h>
 
+//#define CLAYMORE
 
 #include "CLMiner_kernel.h"
 
@@ -81,7 +82,7 @@ void addDefinition(string& _source, char const* _id, unsigned _value)
 	sprintf(buf, "#define %s %uu\n", _id, _value);
 	_source.insert(_source.begin(), buf, buf + strlen(buf));
 }
-
+#define NCHUNKS 4
 int main(int argc, char** argv)
 {
 	// Set env vars controlling GPU driver behavior.
@@ -110,7 +111,7 @@ int main(int argc, char** argv)
 	vector<cl::Platform> platforms;
 	vector<cl::Device> devices;
 	unsigned deviceId = 0;
-	char *output_string            = (char *)calloc(128, 4);
+	char *output_string            = (char *)calloc(64*NCHUNKS, 4);
 
 	printf("Doing OpenCL init..\n");
 	{
@@ -138,6 +139,7 @@ int main(int argc, char** argv)
 	// Create context and queue
 	m_context = cl::Context(vector<cl::Device>(&device, &device + 1));
 	m_queue   = cl::CommandQueue(m_context, device);
+	bool no_dag = false;
 	
 
 	printf("Setting epoch: %d\n", epoch);
@@ -181,7 +183,7 @@ int main(int argc, char** argv)
 
 	}catch(...){
 		std::cout << "Couldn't alloc dag data?\n";
-		return -1;
+		no_dag = true;
 	}
 
 	
@@ -221,26 +223,28 @@ int main(int argc, char** argv)
 
 	std::cout << "got kernel, generating dag...\n";
 
+
 	unsigned m_workgroupSize = 64;
 	unsigned m_globalWorkSize = 8192 * m_workgroupSize;
 
-	uint32_t const work = (uint32_t)(dagSize / sizeof(node));
-	uint32_t fullRuns = work / m_globalWorkSize;
-	uint32_t const restWork = work % m_globalWorkSize;
-	if (restWork > 0) fullRuns++;
+	if(!no_dag){
+		uint32_t const work = (uint32_t)(dagSize / sizeof(node));
+		uint32_t fullRuns = work / m_globalWorkSize;
+		uint32_t const restWork = work % m_globalWorkSize;
+		if (restWork > 0) fullRuns++;
 
-	m_dagKernel.setArg(1, m_light);
-	m_dagKernel.setArg(2, m_dag);
-	m_dagKernel.setArg(3, ~0u);
+		m_dagKernel.setArg(1, m_light);
+		m_dagKernel.setArg(2, m_dag);
+		m_dagKernel.setArg(3, ~0u);
 
-	for (uint32_t i = 0; i < fullRuns; i++)
-	{
-	 	m_dagKernel.setArg(0, i * m_globalWorkSize);
-	 	m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, m_globalWorkSize, m_workgroupSize);
-	 	m_queue.finish();
-	 	std::cout << "DAG" << int(100.0f * i / fullRuns) << "%" << "\n";
+		for (uint32_t i = 0; i < fullRuns; i++)
+		{
+		 	m_dagKernel.setArg(0, i * m_globalWorkSize);
+		 	m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, m_globalWorkSize, m_workgroupSize);
+		 	m_queue.finish();
+		 	std::cout << "DAG" << int(100.0f * i / fullRuns) << "%" << "\n";
+		}
 	}
-
 
 	// Finally, enter the test loop
 	do {
@@ -295,33 +299,64 @@ int main(int argc, char** argv)
 		free(kernel_data);
 
 		printf("Setting up params for run...\n");
+			int f_idx = 0;
 		try
 		{
-			m_asmKernel = cl::Kernel(asmProgram, "keccak_search");
+			m_asmKernel = cl::Kernel(asmProgram, "ethash_search");
 		 	m_asmKernel.setArg(0, m_outputBuffer);
+		 	f_idx++;
+
 		 	m_asmKernel.setArg(1, m_header);
-		 	m_asmKernel.setArg(2, m_dag);
+		 	f_idx++;
+		 	if(no_dag)
+		 		m_asmKernel.setArg(2, m_header);
+		 	else
+			 	m_asmKernel.setArg(2, m_dag);
+		 	f_idx++;
 
 			cl_ulong target = 0x80000000090000L; 
 			cl_ulong nonce = 0x133700001338000L;
 			cl_uint isolate = 666;
 			cl_uint factor  = (1UL << 32)/dagSize128;
+			cl_uint factor2  = 0x11111112;
+
 		 	m_asmKernel.setArg(3, nonce);
+		 	f_idx++;
 		 	m_asmKernel.setArg(4, target);
+		 	f_idx++;
 		 	m_asmKernel.setArg(5, isolate);
+		 	f_idx++;
 		 	m_asmKernel.setArg(6, dagSize128);
+		 	f_idx++;
 		 	m_asmKernel.setArg(7, factor);
+		 	f_idx++;
+
+		 	m_asmKernel.setArg(8, factor2);
+		 	f_idx++;
+
+		 	#ifdef CLAYMORE
+			cl_uint xnonce  = 0x22222223;
+			cl_uint dcr_per_item = 7;
+
+		 	m_asmKernel.setArg(9, m_header);
+		 	f_idx++;
+		 	m_asmKernel.setArg(10, xnonce);
+		 	f_idx++;
+		 	m_asmKernel.setArg(11, dcr_per_item);
+		 	f_idx++;
+
+		 	#endif
 
 
-
-		}catch (cl::Error const&) {
-			printf("Failed to load and set args for kernel...\n");
+		}catch (cl::Error const& err) {
+			std::cout << err.what() << "(" << err.err() << ")";
+			printf("Failed to load and set args (specifically %d) for kernel...\n", f_idx);
 		}
 
 		printf("Successful load, running...\n");
 
 		try{
-		 	m_queue.enqueueNDRangeKernel(m_asmKernel, cl::NullRange, 128, 64);
+		 	m_queue.enqueueNDRangeKernel(m_asmKernel, 128, 64*NCHUNKS, 64);
 		 	m_queue.finish();
 			// get data
 		 }
@@ -334,15 +369,18 @@ int main(int argc, char** argv)
 		printf("Successful run, reading...\n");
 
 		try {
-			m_queue.enqueueReadBuffer(m_outputBuffer, CL_TRUE, 0, 128 * sizeof(uint), output_string);
+			m_queue.enqueueReadBuffer(m_outputBuffer, CL_TRUE, 0, 64 * sizeof(uint)*NCHUNKS, output_string);
 		}catch(cl::Error const& err){
 			std::cout << err.what() << "(" << err.err() << ")";
 			continue;
 		}
 
-		for(int i = 0; i < 8*2; i++) {
-			for(int j = 0; j < 8; j++) {
-				printf("%08X-", ((uint*)output_string)[i*8 + j]);
+		for(int k = 0; k < NCHUNKS; k++) {
+			for(int i = 0; i < 8; i++) {
+				for(int j = 0; j < 8; j++) {
+					printf("%08X-", ((uint*)output_string)[(k*8 + i)*8 + j]);
+				}
+				printf("\n");
 			}
 			printf("\n");
 		}
