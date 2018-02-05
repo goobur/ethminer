@@ -187,10 +187,6 @@ int main(int argc, char** argv)
 	}
 
 	
-	ethash_calculate_dag_item(&test_node, 0x23599F80>>6, light->light);
-	for(int i = 0; i < 64/4; i++) {
-		printf("0x%08X\n", test_node.words[i]);
-	}
 
 	uint32_t	test_header[32/4] = {
 		0xAAAAAAA0, 0x0BBBBBB0,
@@ -245,9 +241,19 @@ int main(int argc, char** argv)
 		 	std::cout << "DAG" << int(100.0f * i / fullRuns) << "%" << "\n";
 		}
 	}
+	char xxx = 0;
 
 	// Finally, enter the test loop
 	do {
+		if(xxx == 's') {
+
+			ethash_calculate_dag_item(&test_node, 0, light->light);
+			for(int i = 0; i < 64/4; i++) {
+				printf("0x%08X\n", test_node.words[i]);
+			}
+			xxx = getchar();
+			continue;
+		}
 	    printf("Testing n' testing kernel...");
 	
 		// Kernel load scope
@@ -384,8 +390,8 @@ int main(int argc, char** argv)
 			}
 			printf("\n");
 		}
-
-	}while(getchar() != 'q');
+		xxx = getchar();
+	}while(xxx != 'q');
 	free(output_string);
 	return 0;
 }
