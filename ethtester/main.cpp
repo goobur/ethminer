@@ -324,7 +324,7 @@ int main(int argc, char** argv)
 			cl_ulong nonce = 0x133700001338000L;
 			cl_uint isolate = 666;
 			cl_uint factor  = (1UL << 32)/dagSize128;
-			cl_uint factor2  = 0x11111112;
+			cl_uint factor2  = 0x7;
 
 		 	m_asmKernel.setArg(3, nonce);
 		 	f_idx++;
@@ -362,7 +362,7 @@ int main(int argc, char** argv)
 		printf("Successful load, running...\n");
 
 		try{
-		 	m_queue.enqueueNDRangeKernel(m_asmKernel, 128, 64*NCHUNKS, 64);
+		 	m_queue.enqueueNDRangeKernel(m_asmKernel, 0, 64*NCHUNKS, 64);
 		 	m_queue.finish();
 			// get data
 		 }
