@@ -683,6 +683,7 @@ bool CLMiner::init(const h256& seed)
 		/* If we have a binary kernel, we load it in tandem with the opencl,
 		   that way, we can use the dag generate opencl code */
 		bool loadedBinary = false;
+		unsigned int computeUnits = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
 
 		if(s_clKernelName >= CLKernelName::Binary) {
 			std::ifstream kernel_file;
@@ -720,6 +721,9 @@ bool CLMiner::init(const h256& seed)
 				{
 					cwarn << "Build info:" << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
 				}
+
+				computeUnits = computeUnits == 14 ? 36 : computeUnits;
+				m_globalWorkSize = (computeUnits << 14)*8;
 			} else {
 				cwarn << "Instructed to load binary kernel, but failed to load kernel:";
 				cwarn << fname_strm.str();
@@ -801,6 +805,8 @@ bool CLMiner::init(const h256& seed)
 			cllog << "DAG" << int(100.0f * i / fullRuns) << '%';
 		}
 
+		//cllog << program.getInfo<CL_PROGRAM_BINARIES>();
+		//exit(-1);
 	}
 	catch (cl::Error const& err)
 	{
