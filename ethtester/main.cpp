@@ -82,7 +82,7 @@ void addDefinition(string& _source, char const* _id, unsigned _value)
 	sprintf(buf, "#define %s %uu\n", _id, _value);
 	_source.insert(_source.begin(), buf, buf + strlen(buf));
 }
-#define NCHUNKS 4
+#define NCHUNKS 8
 int main(int argc, char** argv)
 {
 	// Set env vars controlling GPU driver behavior.
@@ -320,9 +320,10 @@ int main(int argc, char** argv)
 			 	m_asmKernel.setArg(2, m_dag);
 		 	f_idx++;
 
-			cl_ulong target = 0x80000000090000L; 
-			cl_ulong nonce = 0x133700001338000L;
+			cl_ulong target = 0x0000000112e0be82UL; 
+			cl_ulong nonce = 0x133700001338000UL;
 			cl_uint isolate = 666;
+
 			cl_uint factor  = (1UL << 32)/dagSize128;
 			cl_uint factor2  = 0x7;
 
@@ -381,7 +382,7 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		for(int k = 0; k < NCHUNKS; k++) {
+		for(int k = 0; k < 5; k++) {
 			for(int i = 0; i < 8; i++) {
 				for(int j = 0; j < 8; j++) {
 					printf("%08X-", ((uint*)output_string)[(k*8 + i)*8 + j]);
