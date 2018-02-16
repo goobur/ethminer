@@ -776,10 +776,11 @@ bool CLMiner::init(const h256& seed)
 		m_searchKernel.setArg(5, ~0u);  // Pass this to stop the compiler unrolling the loops.
 		
 		if(s_clKernelName >= CLKernelName::Binary && loadedBinary) {
-			uint32_t factor = (1UL << 32)/dagSize128;
+			const uint32_t epoch = light->light->block_number/ETHASH_EPOCH_LENGTH;
 			m_searchKernel.setArg(6, dagSize128);
-			m_searchKernel.setArg(7, factor);
-			m_searchKernel.setArg(8, s_threadTweak);
+			m_searchKernel.setArg(7, modulo_optimization[epoch].factor);
+			m_searchKernel.setArg(8, modulo_optimization[epoch].shift);
+			m_searchKernel.setArg(9, s_threadTweak);
 		}
 
 		// create mining buffers
