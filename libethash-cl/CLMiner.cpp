@@ -692,7 +692,11 @@ bool CLMiner::init(const h256& seed)
 
 			/* Open kernels/{devicename}.bin */
 			std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(), ::tolower);
-			fname_strm << "kernels/" << deviceName << ".bin";
+			if(s_clKernelName == CLKernelName::Claymore) {
+				fname_strm << "claymore/" << deviceName << ".bin";
+			} else { 
+				fname_strm << "kernels/" << deviceName << ".bin";
+			}
 
 			kernel_file.open(
 					fname_strm.str(),
@@ -752,9 +756,11 @@ bool CLMiner::init(const h256& seed)
 			m_dag = cl::Buffer(m_context, CL_MEM_READ_ONLY, dagSize);
 			cllog << "Loading kernels";
 
-			if(s_clKernelName >= CLKernelName::Binary && loadedBinary) {
+			if(s_clKernelName == CLKernelName::Binary && loadedBinary) {
 				m_searchKernel = cl::Kernel(binaryProgram, "ethash_search");
-			}else{
+			}else if(s_clKernelName == CLKernelName::Claymore && loadedBinary) {
+				m_searchKernel = cl::Kernel(binaryProgram, "k_r1a");
+ 			} else {
 				m_searchKernel = cl::Kernel(program, "ethash_search");
 			}
 			m_dagKernel = cl::Kernel(program, "ethash_calculate_dag_item");
@@ -768,19 +774,29 @@ bool CLMiner::init(const h256& seed)
 		}
 		// create buffer for header
 		ETHCL_LOG("Creating buffer for header.");
-		m_header = cl::Buffer(m_context, CL_MEM_READ_ONLY, 32);
-
+		m_header = cl::Buffer(m_context, CL_MEM_READ_ONLY, sizeof(Keccak_RC_kernel));
 
 		m_searchKernel.setArg(1, m_header);
 		m_searchKernel.setArg(2, m_dag);
 		m_searchKernel.setArg(5, ~0u);  // Pass this to stop the compiler unrolling the loops.
 		
-		if(s_clKernelName >= CLKernelName::Binary && loadedBinary) {
+		if(s_clKernelName == CLKernelName::Binary && loadedBinary) {
 			const uint32_t epoch = light->light->block_number/ETHASH_EPOCH_LENGTH;
 			m_searchKernel.setArg(6, dagSize128);
 			m_searchKernel.setArg(7, modulo_optimization[epoch].factor);
 			m_searchKernel.setArg(8, modulo_optimization[epoch].shift);
 			m_searchKernel.setArg(9, s_threadTweak);
+
+		}else if(s_clKernelName >= CLKernelName::Claymore && loadedBinary) {
+			const uint32_t epoch = light->light->block_number/ETHASH_EPOCH_LENGTH;
+			m_searchKernel.setArg(6, dagSize128);
+			m_searchKernel.setArg(7, modulo_optimization[epoch].shift);
+			m_searchKernel.setArg(8, modulo_optimization[epoch].factor);
+			m_searchKernel.setArg(9, m_header);
+			m_searchKernel.setArg(10, s_threadTweak & 0xFFFF);
+			m_searchKernel.setArg(11, s_threadTweak & 0xFFFF);
+
+			m_queue.enqueueWriteBuffer(m_header, CL_TRUE, 0, sizeof(Keccak_RC_kernel), Keccak_RC_kernel);
 		}
 
 		// create mining buffers
@@ -805,9 +821,6 @@ bool CLMiner::init(const h256& seed)
 			m_queue.finish();
 			cllog << "DAG" << int(100.0f * i / fullRuns) << '%';
 		}
-
-		//cllog << program.getInfo<CL_PROGRAM_BINARIES>();
-		//exit(-1);
 	}
 	catch (cl::Error const& err)
 	{
